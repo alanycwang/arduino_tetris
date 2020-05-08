@@ -66,8 +66,10 @@ int16_t pieces[7][4] = {{0x0F00, 0x2222, 0x00F0, 0x4444},  //I
 
                          
 int16_t colors[7] = {CYAN, BLUE, ORANGE, YELLOW, GREEN, MAGENTA, RED};
-                               
-                                 
+
+//stores leaderboard scores
+uint32_t scores[10];
+uint8_t initls[10][2];                     
 
 void setup() {
 Serial.begin(9600);
@@ -85,6 +87,13 @@ Serial.begin(9600);
   tft.setRotation(1);
   tft.setTextColor(WHITE);
   tft.setTextSize(1);
+
+  //reads leaderoard scores from EEPROM
+  for (int i = 0; i < 10; i++) {
+    EEPROM.get(6*i, initls[i][0]); // 1 byte
+    EEPROM.get(6*i + 1, initls[i][1]); // 1 byte
+    EEPROM.get(6*i + 2, scores[i]);// 4 bytes
+  }
 }
 
 void loop() {
@@ -106,20 +115,104 @@ void loop() {
       break;
     }
   }
-  /*tft.fillScreen(BLACK);
+  tft.fillScreen(BLACK);
+  for (int i = 0; i < 10; i++) {
+    if (score > scores[i]){
+      saveScore(i);
+      break;
+    }
+  }
+  showLeaderboard();
+  delay(1000);
+  while(true) {
+    updateInput();
+    if (b1 == true || b2 == true || sw == true) {
+      break;
+    }
+  }
+}
+
+void showLeaderboard() {
+  tft.fillScreen(BLACK);
+  tft.setTextSize(1);
+  tft.setTextColor(WHITE);
+  for (int i = 0; i < 10; i++){
+    tft.setCursor(10, 24 + 8*i);
+    tft.print(char('A' + initls[i][0]));
+    tft.print(char('A' + initls[i][1]));
+    tft.print(": ");
+    tft.print(scores[i]);
+  }
+}
+
+void saveScore(uint8_t place){
   tft.setCursor(7, 30);
-  int initials[2] = {0, 0};
+  int initials[2] = {0, 25};
   tft.print("Enter your initials");
-  tft.setCursor (7, 38);
-  tft.print("Left button: Change Letter");
+  tft.setCursor(7, 38);
+  tft.print("Left button: Change");
   tft.setCursor(7, 46);
   tft.print("Right button: Enter");
   tft.setTextSize(2);
-  bool first = true;
-  tft.fillRect(
+  bool selected = true;
+  uint8_t xlocs[2] = {64, 52};
+  bool pressOK = true;
   while (true) {
+    if (b2) break;
+    updateInput();
+    bool change = false;
+    if (vrx <= 3 && selected) {
+      selected = false;
+      change = true;
+    }
+    if (vrx >= 7 && !selected) {
+      selected = true;
+      change = true;
+    }
+    if (b1 && pressOK){
+      initials[selected] = (initials[selected] + 1)%26;
+      change = true;
+      pressOK = false;
+    }
+
+    else if (!b1 && !pressOK) pressOK = true;
     
-  }*/
+    if (change) {
+      tft.fillRect(52, 80, 24, 32, BLACK);
+      tft.setCursor(xlocs[!selected], 80);
+      tft.setTextColor(WHITE);
+      tft.print(char('A' + initials[!selected]));
+      tft.setCursor(xlocs[selected], 80);
+      tft.setTextColor(YELLOW);
+      tft.print(char('A' + initials[selected]));
+    }
+  }
+
+  //each score takes up 4(score) + 2(initials) = 6(total) bytes
+  for (int i = place + 1; i < 10; i++) {
+    scores[i] = scores[i-1];
+    initls[i][0] = initls[i-1][0];
+    initls[i][1] = initls[i-1][1];
+  }
+  scores[place] = score;
+  initls[place][0] = initials[1];
+  initls[place][1] = initials[0];
+
+  update_EEPROM();
+}
+
+void update_EEPROM () {
+  for (int i = 0; i < 10; i++){
+    uint8_t a, b;
+    uint32_t s;
+    EEPROM.get(6*i, a);
+    EEPROM.get(6*i + 1, b);
+    EEPROM.get(6*i + 2, s);
+
+    if (a != initls[i][0]) EEPROM.put(6*i, initls[i][0]);
+    if (b != initls[i][1]) EEPROM.put(6*i + 1, initls[i][1]);
+    if (s != scores[i]) EEPROM.put(6*i + 2, scores[i]);
+  }
 }
 
 void play() {
