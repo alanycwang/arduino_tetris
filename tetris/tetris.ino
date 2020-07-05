@@ -40,6 +40,8 @@ bool b1 = false;
 bool b2 = false;
 
 bool rotateOK = true; //makes sure that piece rotates only once per button press
+bool rotateOK2 = true;
+bool storeOK = true;
 
 bool game_over = false;
 
@@ -51,6 +53,8 @@ int8_t level = 0; //determines fall speed
 uint32_t score = 0;
 
 int8_t currentPiece[4]; //{piece, rotation, x, y} X AND Y VALUES CAN BE NEGATIVE
+int8_t nextPiece; //next piece, will replace currentPiece[0]
+int8_t storedPiece;
 
 int8_t delayTime = 0; //used to delay different actions, stays constant
 int8_t dropTime = 0; //used to delay falling, decreases at higher levels
@@ -150,9 +154,9 @@ void saveScore(uint8_t place){
   int initials[2] = {0, 25};
   tft.print("Enter your initials");
   tft.setCursor(7, 38);
-  tft.print("Left button: Change");
+  tft.print("Down: Next Letter");
   tft.setCursor(7, 46);
-  tft.print("Right button: Enter");
+  tft.print("Up: Enter");
   tft.setTextSize(2);
   bool selected = true;
   uint8_t xlocs[2] = {64, 52};
@@ -189,7 +193,7 @@ void saveScore(uint8_t place){
   }
 
   //each score takes up 4(score) + 2(initials) = 6(total) bytes
-  for (int i = place + 1; i < 10; i++) {
+  for (int i = 9; i > place; i--) {
     scores[i] = scores[i-1];
     initls[i][0] = initls[i-1][0];
     initls[i][1] = initls[i-1][1];
@@ -220,19 +224,20 @@ void play() {
   tft.fillRect(0, 0, 80, 128, BLACK);
 
   clearScreen();
-  clearScreen();
+  clearScreen(); //done twice to clear both screen[0] and screen[1]
 
   score = 0;
   level = 0;
   lines = 0;
   game_over = false;
+  storedPiece = -1;
 
   spawnPiece();
-  printStats();
+  //printStats();
   
   while (true) {
     if (game_over) break;
-    int temp = score; //helps check to see if score changed, so we don't need to refresh the screen every frame, which again, is slow
+    //int temp = score; //helps check to see if score changed, so we don't need to refresh the screen every frame, which again, is slow
     updateInput();
     checkActions();
   
@@ -248,7 +253,6 @@ void play() {
     delayTime = (delayTime + 1)%100;
     dropTime = (dropTime + 1)%(100 - 10*level);
     level = int(lines/10)%10;
-    if (temp != score) printStats();
   }
 }
 
@@ -262,17 +266,16 @@ void updateInput(){ //updates input value variables
 
 void checkActions() { //checks input to see if anything needs to be moved, rotated, etc
   if (b1 && rotateOK) {
-    rotate();
+    rotate(true);
     rotateOK = false;
   }
-  else if (!b1) rotateOK = true;
+  else if (!b1 && !rotateOK) rotateOK = true;
 
-  if (b2) {
-    clearPiece(currentPiece[0], currentPiece[1], currentPiece[2], currentPiece[3]);
-    currentPiece[0] = (currentPiece[0] + 1)%7;
-    printPiece(currentPiece[0], currentPiece[1], currentPiece[2], currentPiece[3]);
-    printScreen();
+  if (b2 && rotateOK2) {
+    rotate(false);
+    rotateOK2 = false;
   }
+  else if (!b2 && !rotateOK2) rotateOK2 = true;
 
   if (delayTime%10 == 0 && vry <= 3) {
     if(!down()) {
@@ -288,6 +291,12 @@ void checkActions() { //checks input to see if anything needs to be moved, rotat
   else if (delayTime%10 == 0 && vrx <= 3) {
     right();
   }
+
+  if (sw && storeOK) {
+    storePiece();
+    storeOK = false;
+  }
+  if (!sw && !storeOK) storeOK = true;
 }
 
 void printScreen() { //actually tells the lcd what to print based on screen array
@@ -295,8 +304,9 @@ void printScreen() { //actually tells the lcd what to print based on screen arra
     for (int j = 0; j < 16; j++) {
       if (screen[refresh][i][j] != screen[(refresh + 1)%2][i][j]) {
         if (screen[refresh][i][j] != BLACK) {
-          tft.fillRect(1 + i*8, 1 + j*8, 6, 6, screen[refresh][i][j]);
+          //tft.fillRect(i*8, j*8, 8, 8, screen[refresh][i][j]);
           //edges of block
+          tft.fillRect(1 + i*8, 1 + j*8, 6, 6, screen[refresh][i][j]);
           tft.fillRect(i*8, j*8, 8, 1, LGRAY);
           tft.fillRect(i*8, j*8 + 1, 1, 6, GRAY);
           tft.fillRect((i + 1)*8 - 1, j*8 + 1, 1, 6, GRAY);
@@ -323,13 +333,67 @@ void printStats() {
   tft.setCursor(88, 16);
   tft.print(score);
   tft.setCursor(88, 32);
-  tft.print("Level:");
-  tft.setCursor(88, 40);
-  tft.print(level);
-  tft.setCursor(88, 56);
-  tft.print("Lines:");
-  tft.setCursor(88, 64);
-  tft.print(lines);
+  tft.print("Next:");
+  tft.fillRect(88, 44, 40, 24, DGRAY);
+  if (nextPiece == 0 || nextPiece == 3) {
+    for (int i = 0; i < 4; i++) {
+      for (int j = 0; j < 4; j++) {
+        if (occupied(nextPiece, 0, i, j)) {
+          //tft.fillRect(92 + i*8, 44 + j*8, 8, 8, colors[nextPiece]);
+          tft.fillRect(89 + j*8, 45 + i*8, 6, 6, colors[nextPiece]);
+          tft.fillRect(88 + j*8, 44 + i*8, 8, 1, LGRAY);
+          tft.fillRect(88 + j*8, 44 + i*8 + 1, 1, 6, GRAY);
+          tft.fillRect(88 + (j + 1)*8 - 1, 44 + i*8 + 1, 1, 6, GRAY);
+          tft.fillRect(88 + j*8, 44 + (i + 1)*8 - 1, 8, 1, DGRAY); 
+        }
+      }
+    }
+  }
+  else {
+    for (int i = 0; i < 4; i++) {
+      for (int j = 0; j < 4; j++) {
+        if (occupied(nextPiece, 0, i, j)) {
+          //tft.fillRect(92 + i*8, 44 + j*8, 8, 8, colors[nextPiece]);
+          tft.fillRect(93 + j*8, 45 + i*8, 6, 6, colors[nextPiece]);
+          tft.fillRect(92 + j*8, 44 + i*8, 8, 1, LGRAY);
+          tft.fillRect(92 + j*8, 44 + i*8 + 1, 1, 6, GRAY);
+          tft.fillRect(92 + (j + 1)*8 - 1, 44 + i*8 + 1, 1, 6, GRAY);
+          tft.fillRect(92 + j*8, 44 + (i + 1)*8 - 1, 8, 1, DGRAY); 
+        }
+      }
+    }
+  }
+  tft.setCursor(88, 84);
+  tft.print("Store:");
+  tft.fillRect (88, 96, 40, 24, DGRAY);
+  if (storedPiece >= 0 && storedPiece == 0 || storedPiece == 3) {
+    for (int i = 0; i < 4; i++) {
+      for (int j = 0; j < 4; j++) {
+        if (occupied(storedPiece, 0, i, j)) {
+          //tft.fillRect(92 + i*8, 96 + j*8, 8, 8, colors[storedPiece]);
+          tft.fillRect(89 + j*8, 97 + i*8, 6, 6, colors[storedPiece]);
+          tft.fillRect(88 + j*8, 96 + i*8, 8, 1, LGRAY);
+          tft.fillRect(88 + j*8, 96 + i*8 + 1, 1, 6, GRAY);
+          tft.fillRect(88 + (j + 1)*8 - 1, 96 + i*8 + 1, 1, 6, GRAY);
+          tft.fillRect(88 + j*8, 96 + (i + 1)*8 - 1, 8, 1, DGRAY); 
+        }
+      }
+    }
+  }
+  else if (storedPiece >= 0) {
+    for (int i = 0; i < 4; i++) {
+      for (int j = 0; j < 4; j++) {
+        if (occupied(storedPiece, 0, i, j)) {
+          //tft.fillRect(92 + i*8, 96 + j*8, 8, 8, colors[storedPiece]);
+          tft.fillRect(93 + j*8, 97 + i*8, 6, 6, colors[storedPiece]);
+          tft.fillRect(92 + j*8, 96 + i*8, 8, 1, LGRAY);
+          tft.fillRect(92 + j*8, 96 + i*8 + 1, 1, 6, GRAY);
+          tft.fillRect(92 + (j + 1)*8 - 1, 96 + i*8 + 1, 1, 6, GRAY);
+          tft.fillRect(92 + j*8, 96 + (i + 1)*8 - 1, 8, 1, DGRAY); 
+        }
+      }
+    }
+  }
 }
 
 void clearScreen() {
@@ -431,12 +495,15 @@ int power(int base, int expnt) { //builtin exponent function is broken (somtimes
   return (base*(power(base, expnt - 1)));
 }
 
-bool rotate() {
+bool rotate(bool ccw) {
   //moves the piece away if there is no space to rotate into, called "wall kick"
+  int dir;
+  if (ccw) dir = 1;
+  else dir = -1;
   int8_t offset = 0;
   for (int i = 0; i < 4; i++) {
     for (int j = 0; j < 4; j++) {
-      if (occupied(currentPiece[0], (currentPiece[1] + 1)%4, i, j)) {
+      if (occupied(currentPiece[0], (currentPiece[1] + dir + 4)%4, i, j)) {
         if (currentPiece[2] + j + offset < 0) offset -= (currentPiece[2] + j + offset);
         else if (currentPiece[2] + j + offset > 9) offset -= ((currentPiece[2] + j + offset) - 9);
       }
@@ -446,7 +513,7 @@ bool rotate() {
   clearPiece(currentPiece[0], currentPiece[1], currentPiece[2], currentPiece[3]);
   for (int i = 0; i < 4; i++) {
     for (int j = 0; j < 4; j++) {
-      if (occupied(currentPiece[0], (currentPiece[1] + 1)%4, i, j) && !occupied(currentPiece[0], currentPiece[1], i, j)) {
+      if (occupied(currentPiece[0], (currentPiece[1] + dir + 4)%4, i, j) && !occupied(currentPiece[0], currentPiece[1], i, j)) {
         if (screen[refresh][currentPiece[2] + j + offset][currentPiece[3] + i] != BLACK) {
           return false;
           printPiece(currentPiece[0], currentPiece[1], currentPiece[2], currentPiece[3]);
@@ -455,7 +522,7 @@ bool rotate() {
     }
   }
  
-  currentPiece[1] = (currentPiece[1] + 1)%4;
+  currentPiece[1] = (currentPiece[1] + dir + 4)%4;
   currentPiece[2] += offset;
   printPiece(currentPiece[0], currentPiece[1], currentPiece[2], currentPiece[3]);
   printScreen();
@@ -504,10 +571,11 @@ void deleteRow(int row) {
 }
 
 void spawnPiece() {
-  currentPiece[0] = randomPiece();
+  currentPiece[0] = nextPiece;
   currentPiece[1] = 0;
   currentPiece[2] = 3;
   currentPiece[3] = 0;
+  nextPiece = randomPiece();
 
   for (int i = 0; i < 4; i++) {
     for (int j = 0; j < 4; j++) {
@@ -519,10 +587,31 @@ void spawnPiece() {
   }
 
   printPiece(currentPiece[0], currentPiece[1], currentPiece[2], currentPiece[3]);
+  printStats();
   printScreen();
 }
 
 int absval(int x) { //so abs() is somehow also broken, probably because it uses pow()
   if (x < 0) return 0 - x;
   return x;
+}
+
+void storePiece() {
+  if (storedPiece == -1) {
+    storedPiece = currentPiece[0];
+    clearPiece(currentPiece[0], currentPiece[1], currentPiece[2], currentPiece[3]);
+    spawnPiece();
+  }
+  else {
+    clearPiece(currentPiece[0], currentPiece[1], currentPiece[2], currentPiece[3]);
+    int8_t temp = storedPiece;
+    storedPiece = currentPiece[0];
+    currentPiece[0] = temp;
+    currentPiece[1] = 0;
+    currentPiece[2] = 3;
+    currentPiece[3] = 0;
+    printPiece(currentPiece[0], currentPiece[1], currentPiece[2], currentPiece[3]);
+    printStats();
+    printScreen();
+  }
 }
