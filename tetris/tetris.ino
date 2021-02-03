@@ -14,7 +14,7 @@
 #define SW       2
 
 //Buttons
-#define B1       3
+#define B1       12
 #define B2       4
 
 #define BLACK    0x0000
