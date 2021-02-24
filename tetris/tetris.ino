@@ -83,7 +83,7 @@ Serial.begin(9600);
   pinMode(VRx, INPUT);
   pinMode(VRy, INPUT);
   pinMode(SW, INPUT_PULLUP);
-  pinMode(B1, INPUT_PULLUP);
+  pinMode(B1, INPUT_PULLUP);  
   pinMode(B2, INPUT_PULLUP);
   pinMode(A3, INPUT);
   pinMode(A5, INPUT);
@@ -299,7 +299,7 @@ void checkActions() { //checks input to see if anything needs to be moved, rotat
   if (!sw && !storeOK) storeOK = true;
 }
 
-void printScreen() { //actually tells the lcd what to print based on screen array
+void printScreen() { //updates screen based on what's already there, since the screen is very slow
   for (int i = 0; i < 10; i++) {
     for (int j = 0; j < 16; j++) {
       if (screen[refresh][i][j] != screen[(refresh + 1)%2][i][j]) {
